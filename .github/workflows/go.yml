@@ -12,7 +12,17 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            binary: picotr
+            asset: picotr_linux_amd64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            binary: picotr.exe
+            asset: picotr_windows_amd64.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -23,26 +33,27 @@ jobs:
           go-version: '1.25'
 
       - name: Build
-        run: go build -v ./...
+        run: go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o ${{ matrix.binary }} ./cmd/picotr
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.binary }}
 
   release:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          go-version: '1.25'
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            picotr_linux_amd64/picotr
+            picotr_windows_amd64.exe/picotr.exe
